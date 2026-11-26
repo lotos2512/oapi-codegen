@@ -20,6 +20,7 @@ func MergeSchemas(allOf []*openapi3.SchemaRef, path []string) (Schema, error) {
 }
 
 func mergeSchemas(allOf []*openapi3.SchemaRef, path []string) (Schema, error) {
+	allOf = withoutAnnotationOnly(allOf)
 	n := len(allOf)
 
 	if n == 1 {
@@ -246,4 +247,39 @@ func equalTypes(t1 *openapi3.Types, t2 *openapi3.Types) bool {
 	}
 
 	return true
+}
+
+// withoutAnnotationOnly drops allOf members that only annotate the schema
+// (description, title, example) and constrain nothing, e.g.
+//
+//	allOf: [{$ref: '#/components/schemas/Status'}, {description: '...'}]
+//
+// Such a member would otherwise force an inline merged type instead of the
+// referenced one (a duplicate type name next to the component), or fail the
+// merge on an empty format. At least one member is always kept.
+func withoutAnnotationOnly(allOf []*openapi3.SchemaRef) []*openapi3.SchemaRef {
+	kept := make([]*openapi3.SchemaRef, 0, len(allOf))
+	for _, r := range allOf {
+		if !isAnnotationOnly(r) {
+			kept = append(kept, r)
+		}
+	}
+	if len(kept) == 0 {
+		return allOf
+	}
+	return kept
+}
+
+func isAnnotationOnly(r *openapi3.SchemaRef) bool {
+	if r == nil || r.Ref != "" || r.Value == nil {
+		return false
+	}
+	v := r.Value
+	return v.Type.Slice() == nil && v.Format == "" && len(v.Enum) == 0 &&
+		len(v.Properties) == 0 && len(v.Required) == 0 && v.Items == nil &&
+		v.AdditionalProperties.Has == nil && v.AdditionalProperties.Schema == nil &&
+		len(v.AllOf) == 0 && len(v.OneOf) == 0 && len(v.AnyOf) == 0 && v.Not == nil &&
+		v.Default == nil && !v.Nullable && len(v.Extensions) == 0 &&
+		v.Min == nil && v.Max == nil && v.MinLength == 0 && v.MaxLength == nil &&
+		v.Pattern == "" && v.MinItems == 0 && v.MaxItems == nil && v.Discriminator == nil
 }

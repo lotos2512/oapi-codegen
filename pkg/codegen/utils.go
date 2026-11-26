@@ -1092,7 +1092,27 @@ func TypeDefinitionsEquivalent(t1, t2 TypeDefinition) bool {
 	if t1.TypeName != t2.TypeName {
 		return false
 	}
-	return reflect.DeepEqual(t1.Schema.OAPISchema, t2.Schema.OAPISchema)
+	if reflect.DeepEqual(t1.Schema.OAPISchema, t2.Schema.OAPISchema) {
+		return true
+	}
+	// The same schema reached twice (e.g. components/parameters/X and
+	// components/schemas/X) often differs only in its description or
+	// example; it still yields the same Go type, so it is not a conflict.
+	return t1.Schema.GoType == t2.Schema.GoType &&
+		reflect.DeepEqual(withoutAnnotations(t1.Schema.OAPISchema), withoutAnnotations(t2.Schema.OAPISchema))
+}
+
+// withoutAnnotations returns a shallow copy of s without the fields that do
+// not affect generated code: description, title and example.
+func withoutAnnotations(s *openapi3.Schema) *openapi3.Schema {
+	if s == nil {
+		return nil
+	}
+	c := *s
+	c.Description = ""
+	c.Title = ""
+	c.Example = nil
+	return &c
 }
 
 // isAdditionalPropertiesExplicitFalse determines whether an openapi3.Schema is explicitly defined as `additionalProperties: false`
